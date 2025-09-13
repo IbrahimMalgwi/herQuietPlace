@@ -1,27 +1,34 @@
-// navigation/AppNavigator.js
+// src/navigation/AppNavigator.tsx
 import React from "react";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { useAuth } from "../contexts/AuthContext";
+import { createStackNavigator } from "@react-navigation/stack";
+import AuthScreen from "../screens/AuthScreen";
 import HomeScreen from "../screens/HomeScreen";
-import JournalScreen from "../screens/JournalScreen";
-import PrayerScreen from "../screens/PrayerScreen";
-import AdminDashboard from "../screens/AdminDashboard";
+import SplashScreen from "../screens/SplashScreen";
+import { useAuth } from "../contexts/AuthContext";
+import UserStack from "./UserStack";
+import AdminStack from "./AdminStack";
 
-const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
 
 export default function AppNavigator() {
-  const { role } = useAuth();
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <SplashScreen />;
+  }
 
   return (
-    <Tab.Navigator>
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Journal" component={JournalScreen} />
-      <Tab.Screen name="Prayers" component={PrayerScreen} />
-
-      {/* ✅ Show Admin only if role is admin */}
-      {role === "admin" && (
-        <Tab.Screen name="Admin" component={AdminDashboard} />
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {!user ? (
+        // 🚪 Not logged in
+        <Stack.Screen name="Auth" component={AuthScreen} />
+      ) : user.role === "admin" ? (
+        // 👑 Admin logged in
+        <Stack.Screen name="Admin" component={AdminStack} />
+      ) : (
+        // 🙋 Normal user logged in
+        <Stack.Screen name="User" component={UserStack} />
       )}
-    </Tab.Navigator>
+    </Stack.Navigator>
   );
 }
