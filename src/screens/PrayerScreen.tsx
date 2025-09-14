@@ -1,55 +1,103 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, Button, FlatList } from "react-native";
-import { createPrayer, fetchPrayers } from "../api/prayer";
+import { View, Text, TextInput, Button, FlatList, Alert } from "react-native";
+import { createPrayer, fetchPrayers, Prayer } from "../api/prayer";
 import { useAuth } from "../hooks/useAuth";
-
-type Prayer = {
-  id: string;
-  content: string; // ✅ matches DB column
-  approved: boolean;
-  user_id: string;
-};
 
 export default function PrayerScreen() {
   const { user } = useAuth();
-  const [text, setText] = useState("");
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
   const [prayers, setPrayers] = useState<Prayer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load prayers
+  const loadPrayers = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const data = await fetchPrayers(false, user.id);
+      setPrayers(data);
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (user) {
-      // fetch only *approved* prayers for this user
-      fetchPrayers(false, user.id).then(setPrayers).catch(console.error);
-    }
+    loadPrayers();
   }, [user]);
 
   const handleAddPrayer = async () => {
-    if (!user || !text.trim()) return;
-    const newPrayer = await createPrayer(user.id, text);
-    setPrayers([newPrayer, ...prayers]);
-    setText("");
+    if (!user || !title.trim()) return;
+
+    try {
+      const newPrayer = await createPrayer(user.id, title, content);
+      setPrayers((prev) => [newPrayer, ...prev]);
+      setTitle("");
+      setContent("");
+      Alert.alert("Submitted", "Your prayer has been submitted!");
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    }
   };
 
+  if (!user) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text>You must be signed in to submit prayers.</Text>
+      </View>
+    );
+  }
+
   return (
-    <View style={{ padding: 20 }}>
+    <View style={{ flex: 1, padding: 20 }}>
       <TextInput
-        placeholder="Write your prayer..."
-        value={text}
-        onChangeText={setText}
+        placeholder="Prayer title..."
+        value={title}
+        onChangeText={setTitle}
         style={{
           borderWidth: 1,
           borderColor: "#ccc",
           marginBottom: 10,
           padding: 8,
+          borderRadius: 6,
+        }}
+      />
+      <TextInput
+        placeholder="Write your prayer..."
+        value={content}
+        onChangeText={setContent}
+        style={{
+          borderWidth: 1,
+          borderColor: "#ccc",
+          marginBottom: 10,
+          padding: 8,
+          borderRadius: 6,
         }}
       />
       <Button title="Submit Prayer" onPress={handleAddPrayer} />
-      <FlatList
-        data={prayers}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <Text style={{ marginVertical: 4 }}>{item.content}</Text>
-        )}
-      />
+
+      {loading ? (
+        <Text style={{ marginTop: 20, textAlign: "center" }}>
+          Loading prayers...
+        </Text>
+      ) : (
+        <FlatList
+          style={{ marginTop: 20 }}
+          data={prayers}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 16 }}>{item.title}</Text>
+              {item.content ? <Text>{item.content}</Text> : null}
+              <Text style={{ fontSize: 12, color: "gray" }}>
+                {item.approved ? "✅ Approved" : "⏳ Pending approval"}
+              </Text>
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 }

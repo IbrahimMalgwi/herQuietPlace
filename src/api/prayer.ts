@@ -1,27 +1,42 @@
+// src/api/prayer.ts
 import { supabase } from "../lib/supabaseClient";
-import { Prayer } from "../types/db";
+import { Prayer } from "../types/prayers";
 
-// Create
-export async function createPrayer(userId: string, content: string): Promise<Prayer> {
+// Fetch prayers
+export async function fetchPrayers(
+  communityOnly: boolean,
+  userId: string
+): Promise<Prayer[]> {
+  let query = supabase
+    .from("prayers")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (communityOnly) {
+    // community prayers (shared + approved)
+    query = query.eq("approved", true).eq("shared", true);
+  } else {
+    // personal prayers
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data as Prayer[];
+}
+
+// Create prayer (user submission)
+export async function createPrayer(
+  userId: string,
+  title: string,
+  content?: string
+): Promise<Prayer> {
   const { data, error } = await supabase
-    .from("prayer")
-    .insert([{ user_id: userId, content }])
+    .from("prayers")
+    .insert([{ user_id: userId, title, content, shared: false, approved: false }])
     .select()
     .single();
 
   if (error) throw error;
-  return data;
-}
-
-// Fetch (with approved filter)
-export async function fetchPrayers(onlyApproved: boolean, userId?: string): Promise<Prayer[]> {
-  let query = supabase.from("prayer").select("*");
-
-  if (onlyApproved) query = query.eq("approved", true);
-  if (userId) query = query.eq("user_id", userId);
-
-  const { data, error } = await query.order("created_at", { ascending: false });
-
-  if (error) throw error;
-  return data ?? [];
+  return data as Prayer;
 }
