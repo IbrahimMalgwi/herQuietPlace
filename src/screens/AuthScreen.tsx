@@ -1,4 +1,3 @@
-// src/screens/AuthScreen.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -22,25 +21,16 @@ export default function AuthScreen() {
   const handleAuth = async () => {
     setLoading(true);
     try {
-      let response;
       if (isSignUp) {
-        // Sign up user
-        response = await supabase.auth.signUp({ email, password });
-        if (response.error) throw response.error;
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
 
-        // Create profile in `profiles` table
-        const { user: newUser } = response.data;
-        if (newUser) {
+        if (data.user) {
           const { error: profileError } = await supabase
             .from("profiles")
             .insert([
-              {
-                id: newUser.id,
-                email: newUser.email,
-                role: "user", // default role
-              },
+              { id: data.user.id, email: data.user.email, role: "user" },
             ]);
-
           if (profileError) throw profileError;
         }
 
@@ -49,9 +39,11 @@ export default function AuthScreen() {
           "Account created! Check your email for confirmation."
         );
       } else {
-        // Login
-        response = await supabase.auth.signInWithPassword({ email, password });
-        if (response.error) throw response.error;
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
       }
     } catch (error: any) {
       Alert.alert("Error", error.message);
@@ -60,16 +52,48 @@ export default function AuthScreen() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert(
+        "Enter your email",
+        "Please enter your email to reset password"
+      );
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `herquietplace://reset-password?email=${encodeURIComponent(
+          email
+        )}`,
+      });
+      if (error) throw error;
+
+      Alert.alert("Check your email", "Password reset link has been sent.");
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (user)
+    return (
+      <View style={styles.container}>
+        <Text>You are already logged in!</Text>
+      </View>
+    );
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{isSignUp ? "Sign Up" : "Login"}</Text>
-
       <TextInput
         style={styles.input}
         placeholder="Email"
         placeholderTextColor="#999"
-        keyboardType="email-address"
         autoCapitalize="none"
+        keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
@@ -81,7 +105,6 @@ export default function AuthScreen() {
         value={password}
         onChangeText={setPassword}
       />
-
       <TouchableOpacity
         style={styles.button}
         onPress={handleAuth}
@@ -96,6 +119,14 @@ export default function AuthScreen() {
         )}
       </TouchableOpacity>
 
+      {!isSignUp && (
+        <TouchableOpacity onPress={handleForgotPassword}>
+          <Text style={[styles.toggleText, { marginTop: 5 }]}>
+            Forgot Password?
+          </Text>
+        </TouchableOpacity>
+      )}
+
       <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
         <Text style={styles.toggleText}>
           {isSignUp
@@ -106,8 +137,6 @@ export default function AuthScreen() {
     </View>
   );
 }
-
-// Styles remain the same
 
 const styles = StyleSheet.create({
   container: {
@@ -139,11 +168,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 15,
   },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
   toggleText: {
     color: "#4A4A4A",
     textAlign: "center",

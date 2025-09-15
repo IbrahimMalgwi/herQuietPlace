@@ -1,4 +1,6 @@
-import React from "react";
+// App.tsx
+import React, { useEffect } from "react";
+import { Linking, Alert } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,12 +13,14 @@ import PrayerScreen from "./src/screens/PrayerScreen";
 import AdminDashboardScreen from "./src/screens/AdminDashboardScreen";
 import AuthScreen from "./src/screens/AuthScreen";
 import SplashScreen from "./src/screens/SplashScreen";
+import ResetPasswordScreen from "./src/screens/ResetPasswordScreen";
 
 // Theme
 import { colors } from "./src/theme/colors";
 
 // Auth
 import { useAuth, AuthProvider } from "./src/contexts/AuthContext";
+import { navigationRef } from "./src/navigation/RootNavigation";
 
 export type RootTabParamList = {
   Home: undefined;
@@ -28,9 +32,8 @@ export type RootTabParamList = {
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
-// Updated AppTabs to accept initialRoute as keyof RootTabParamList
 interface AppTabsProps {
-  initialRoute?: keyof RootTabParamList; // ✅ Correct type
+  initialRoute?: keyof RootTabParamList;
   role: string | null;
 }
 
@@ -83,6 +86,29 @@ function AppTabs({ initialRoute = "Home", role }: AppTabsProps) {
 function RootNavigation() {
   const { user, role, loading } = useAuth();
 
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      const url = event.url;
+      if (url.includes("reset-password")) {
+        const tokenParam = url.split("token=")[1] ?? null;
+        if (tokenParam) {
+          navigationRef.navigate("ResetPassword", { access_token: tokenParam });
+        } else {
+          Alert.alert("Error", "Invalid reset password link.");
+        }
+      }
+    };
+
+    Linking.addEventListener("url", handleDeepLink);
+
+    // Check if app was opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
+    return () => Linking.removeEventListener("url", handleDeepLink);
+  }, []);
+
   if (loading) return <SplashScreen />;
 
   if (!user) return <AuthScreen />;
@@ -95,7 +121,7 @@ function RootNavigation() {
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <RootNavigation />
       </NavigationContainer>
     </AuthProvider>
