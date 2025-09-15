@@ -1,118 +1,135 @@
-// src/screens/AuthScreen.tsx
-import React, { useState } from "react";
+// src/screens/AudioScreen.tsx
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  TextInput,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
 } from "react-native";
-import { supabase } from "../lib/supabaseClient";
-import { useAuth } from "../contexts/AuthContext";
+import { Audio } from "expo-av";
+import { Ionicons } from "@expo/vector-icons";
 
-export default function AuthScreen() {
-  const { user } = useAuth();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+// Example audio data (replace with your real audio URLs)
+const audioTracks = [
+  {
+    id: "1",
+    title: "Morning Meditation",
+    uri: "https://example.com/audio1.mp3",
+  },
+  {
+    id: "2",
+    title: "Evening Reflection",
+    uri: "https://example.com/audio2.mp3",
+  },
+  {
+    id: "3",
+    title: "Daily Affirmation",
+    uri: "https://example.com/audio3.mp3",
+  },
+];
+
+export default function AudioScreen() {
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
 
-  const handleAuth = async () => {
-    setLoading(true);
-    try {
-      let response;
-      if (isSignUp) {
-        // Sign up user
-        response = await supabase.auth.signUp({ email, password });
-        if (response.error) throw response.error;
-
-        const { user: newUser } = response.data;
-        if (newUser) {
-          // 🔍 Check how many profiles exist already
-          const { count, error: countError } = await supabase
-            .from("profiles")
-            .select("id", { count: "exact", head: true });
-
-          if (countError) throw countError;
-
-          // 👑 If first profile → admin, else → user
-          const role = count === 0 ? "admin" : "user";
-
-          const { error: profileError } = await supabase
-            .from("profiles")
-            .upsert(
-              {
-                id: newUser.id,
-                email: newUser.email,
-                role,
-              },
-              { onConflict: "id" }
-            );
-
-          if (profileError) throw profileError;
-        }
-
-        Alert.alert(
-          "Success",
-          "Account created! Check your email for confirmation."
-        );
-      } else {
-        // Login
-        response = await supabase.auth.signInWithPassword({ email, password });
-        if (response.error) throw response.error;
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      if (sound) {
+        sound.unloadAsync();
       }
-    } catch (error: any) {
-      Alert.alert("Error", error.message);
+    };
+  }, [sound]);
+
+  const playAudio = async (track: {
+    id: string;
+    title: string;
+    uri: string;
+  }) => {
+    try {
+      setLoading(true);
+      if (sound) {
+        await sound.unloadAsync();
+      }
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: track.uri },
+        { shouldPlay: true }
+      );
+      setSound(newSound);
+      setCurrentTrack(track.id);
+      setIsPlaying(true);
+
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded) {
+          setIsPlaying(status.isPlaying);
+        }
+      });
+    } catch (error) {
+      console.log("Error loading audio:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{isSignUp ? "Sign Up" : "Login"}</Text>
+  const togglePlayPause = async () => {
+    if (!sound) return;
+    const status = await sound.getStatusAsync();
+    if (status.isLoaded) {
+      if (status.isPlaying) {
+        await sound.pauseAsync();
+        setIsPlaying(false);
+      } else {
+        await sound.playAsync();
+        setIsPlaying(true);
+      }
+    }
+  };
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#999"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#999"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
+  const renderItem = ({ item }: { item: (typeof audioTracks)[0] }) => {
+    const isCurrent = currentTrack === item.id;
+    return (
       <TouchableOpacity
-        style={styles.button}
-        onPress={handleAuth}
-        disabled={loading}
+        style={[styles.trackItem, isCurrent && styles.activeTrack]}
+        onPress={() => playAudio(item)}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>
-            {isSignUp ? "Sign Up" : "Login"}
-          </Text>
+        <Text style={styles.trackTitle}>{item.title}</Text>
+        {isCurrent && (
+          <Ionicons
+            name={isPlaying ? "pause-circle" : "play-circle"}
+            size={28}
+            color="#4A90E2"
+          />
         )}
       </TouchableOpacity>
+    );
+  };
 
-      <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
-        <Text style={styles.toggleText}>
-          {isSignUp
-            ? "Already have an account? Login"
-            : "Don't have an account? Sign Up"}
-        </Text>
-      </TouchableOpacity>
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>Audio Library</Text>
+      {loading && <ActivityIndicator size="large" color="#4A90E2" />}
+      <FlatList
+        data={audioTracks}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        contentContainerStyle={{ paddingBottom: 20 }}
+      />
+      {sound && (
+        <TouchableOpacity
+          style={styles.floatingButton}
+          onPress={togglePlayPause}
+        >
+          <Ionicons
+            name={isPlaying ? "pause" : "play"}
+            size={28}
+            color="#fff"
+          />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -121,41 +138,44 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FAEBD7",
-    justifyContent: "center",
     padding: 20,
   },
-  title: {
-    fontSize: 28,
+  header: {
+    fontSize: 24,
     fontWeight: "bold",
-    color: "#4A4A4A",
     marginBottom: 20,
     textAlign: "center",
-  },
-  input: {
-    height: 50,
-    backgroundColor: "#E6E6FA",
-    marginBottom: 15,
-    borderRadius: 8,
-    paddingHorizontal: 15,
     color: "#4A4A4A",
   },
-  button: {
-    backgroundColor: "#A8C1B4",
-    height: 50,
-    borderRadius: 8,
+  trackItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#E6E6FA",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  activeTrack: {
+    backgroundColor: "#D0E8F2",
+  },
+  trackTitle: {
+    fontSize: 16,
+    color: "#4A4A4A",
+  },
+  floatingButton: {
+    position: "absolute",
+    bottom: 30,
+    right: 30,
+    backgroundColor: "#4A90E2",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 15,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  toggleText: {
-    color: "#4A4A4A",
-    textAlign: "center",
-    marginTop: 10,
-    textDecorationLine: "underline",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
   },
 });
