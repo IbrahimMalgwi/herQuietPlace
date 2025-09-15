@@ -1,3 +1,4 @@
+// src/screens/PrayerScreen.tsx
 import React, { useContext } from "react";
 import { View, StyleSheet, Alert } from "react-native";
 import { theme } from "../theme/theme";
@@ -33,18 +34,11 @@ export default function PrayerScreen() {
     );
   }
 
-  // Ensure approved and shared are booleans
-  const safePrayers = prayers.map((p) => ({
-    ...p,
-    approved: p.approved ?? false,
-    shared: p.shared ?? false,
-  }));
-
   return (
     <View style={styles.container}>
       <PrayerForm onSubmit={handleSubmit} />
-      {safePrayers.length ? (
-        <PrayerList prayers={safePrayers} loading={loading} />
+      {prayers.length ? (
+        <PrayerList prayers={prayers} loading={loading} />
       ) : (
         <EmptyState
           title="No prayers yet"

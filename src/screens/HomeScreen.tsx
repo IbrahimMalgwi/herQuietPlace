@@ -5,12 +5,13 @@ import {
   SafeAreaView,
   StyleSheet,
   ActivityIndicator,
+  FlatList,
 } from "react-native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../navigation/AppNavigator";
 import { theme } from "../theme/theme";
 import DailyStrengthCard from "../components/DailyStrengthCard";
-import PrayerList from "../components/PrayerList";
+import PrayerList, { Prayer as PrayerItemType } from "../components/PrayerList";
 import AuthButtons from "../components/AuthButtons";
 import EmptyState from "../components/EmptyState";
 import { useAuth } from "../contexts/AuthContext";
@@ -24,10 +25,21 @@ interface Props {
 
 const HomeScreen = ({ navigation }: Props) => {
   const { user } = useAuth();
-  const { prayers, loading, refreshPrayers } = useContext(PrayerContext);
-  const dailyStrength = "Be strong and courageous today!";
+  const {
+    prayers: contextPrayers,
+    loading,
+    refreshPrayers,
+  } = useContext(PrayerContext);
 
-  const onRefresh = () => refreshPrayers();
+  // Ensure prayers match the PrayerList type
+  const prayers: PrayerItemType[] = contextPrayers.map((p) => ({
+    ...p,
+    approved: p.approved ?? false, // avoid undefined
+  }));
+
+  const onRefresh = () => refreshPrayers && refreshPrayers();
+
+  const dailyStrength = "Be strong and courageous today!"; // Replace with supabase fetch if needed
 
   if (loading) {
     return (
@@ -37,13 +49,6 @@ const HomeScreen = ({ navigation }: Props) => {
     );
   }
 
-  // Ensure approved and shared are booleans
-  const safePrayers = prayers.map((p) => ({
-    ...p,
-    approved: p.approved ?? false,
-    shared: p.shared ?? false,
-  }));
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -52,7 +57,7 @@ const HomeScreen = ({ navigation }: Props) => {
         {user && (
           <Text
             style={styles.profileIcon}
-            onPress={() => navigation.navigate("Profile")}
+            onPress={() => navigation.navigate("User")}
           >
             👤
           </Text>
@@ -65,9 +70,9 @@ const HomeScreen = ({ navigation }: Props) => {
       </View>
 
       {/* Prayers */}
-      {safePrayers.length ? (
+      {prayers.length ? (
         <PrayerList
-          prayers={safePrayers}
+          prayers={prayers}
           loading={loading}
           refreshing={false}
           onRefresh={onRefresh}
@@ -118,7 +123,8 @@ const styles = StyleSheet.create({
       | "600"
       | "700"
       | "800"
-      | "900",
+      | "900"
+      | undefined,
     color: theme.colors.primaryText,
   },
   profileIcon: { fontSize: 28, color: theme.colors.secondaryText },
