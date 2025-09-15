@@ -1,28 +1,117 @@
-// src/screens/AudioScreen.tsx
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
+// src/screens/AuthScreen.tsx
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
+import { supabase } from "../lib/supabaseClient";
+import { useAuth } from "../contexts/AuthContext";
 
-export default function AudioScreen() {
+export default function AuthScreen() {
+  const { user } = useAuth();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+
+  const handleAuth = async () => {
+    setLoading(true);
+    try {
+      let response;
+      if (isSignUp) {
+        // Sign up user
+        response = await supabase.auth.signUp({ email, password });
+        if (response.error) throw response.error;
+
+        const { user: newUser } = response.data;
+        if (newUser) {
+          // 🔍 Check how many profiles exist already
+          const { count, error: countError } = await supabase
+            .from("profiles")
+            .select("id", { count: "exact", head: true });
+
+          if (countError) throw countError;
+
+          // 👑 If first profile → admin, else → user
+          const role = count === 0 ? "admin" : "user";
+
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .upsert(
+              {
+                id: newUser.id,
+                email: newUser.email,
+                role,
+              },
+              { onConflict: "id" }
+            );
+
+          if (profileError) throw profileError;
+        }
+
+        Alert.alert(
+          "Success",
+          "Account created! Check your email for confirmation."
+        );
+      } else {
+        // Login
+        response = await supabase.auth.signInWithPassword({ email, password });
+        if (response.error) throw response.error;
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Audio Comforts</Text>
-      <TouchableOpacity style={styles.audioCard}>
-        <Ionicons
-          name="play-circle-outline"
-          size={40}
-          color={colors.primaryAccent}
-        />
-        <Text style={styles.audioText}>Morning Encouragement</Text>
+      <Text style={styles.title}>{isSignUp ? "Sign Up" : "Login"}</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        placeholderTextColor="#999"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password"
+        placeholderTextColor="#999"
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleAuth}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>
+            {isSignUp ? "Sign Up" : "Login"}
+          </Text>
+        )}
       </TouchableOpacity>
-      <TouchableOpacity style={styles.audioCard}>
-        <Ionicons
-          name="play-circle-outline"
-          size={40}
-          color={colors.primaryAccent}
-        />
-        <Text style={styles.audioText}>Evening Calm</Text>
+
+      <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
+        <Text style={styles.toggleText}>
+          {isSignUp
+            ? "Already have an account? Login"
+            : "Don't have an account? Sign Up"}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -31,26 +120,42 @@ export default function AudioScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primaryBackground,
+    backgroundColor: "#FAEBD7",
+    justifyContent: "center",
     padding: 20,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: colors.primaryText,
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#4A4A4A",
     marginBottom: 20,
+    textAlign: "center",
   },
-  audioCard: {
-    flexDirection: "row",
+  input: {
+    height: 50,
+    backgroundColor: "#E6E6FA",
+    marginBottom: 15,
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    color: "#4A4A4A",
+  },
+  button: {
+    backgroundColor: "#A8C1B4",
+    height: 50,
+    borderRadius: 8,
+    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: colors.secondaryBackground,
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 15,
   },
-  audioText: {
-    marginLeft: 12,
+  buttonText: {
+    color: "#fff",
     fontSize: 16,
-    color: colors.primaryText,
+    fontWeight: "bold",
+  },
+  toggleText: {
+    color: "#4A4A4A",
+    textAlign: "center",
+    marginTop: 10,
+    textDecorationLine: "underline",
   },
 });
