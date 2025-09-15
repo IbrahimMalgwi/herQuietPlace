@@ -7,11 +7,12 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  SafeAreaView,
 } from "react-native";
 import { Audio } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import { theme } from "../theme/theme";
 
-// Example audio data (replace with your real audio URLs)
 const audioTracks = [
   {
     id: "1",
@@ -32,44 +33,46 @@ const audioTracks = [
 
 export default function AudioScreen() {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [currentTrack, setCurrentTrack] = useState<string | null>(null);
+  const [currentTrack, setCurrentTrack] = useState<
+    (typeof audioTracks)[0] | null
+  >(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0); // seconds
+  const [duration, setDuration] = useState(0); // seconds
 
   useEffect(() => {
     return () => {
-      // Cleanup on unmount
-      if (sound) {
-        sound.unloadAsync();
-      }
+      if (sound) sound.unloadAsync();
     };
   }, [sound]);
 
-  const playAudio = async (track: {
-    id: string;
-    title: string;
-    uri: string;
-  }) => {
+  const playAudio = async (track: (typeof audioTracks)[0]) => {
     try {
       setLoading(true);
-      if (sound) {
-        await sound.unloadAsync();
-      }
-      const { sound: newSound } = await Audio.Sound.createAsync(
+      if (sound) await sound.unloadAsync();
+
+      const { sound: newSound, status } = await Audio.Sound.createAsync(
         { uri: track.uri },
         { shouldPlay: true }
       );
       setSound(newSound);
-      setCurrentTrack(track.id);
+      setCurrentTrack(track);
       setIsPlaying(true);
+      setDuration(status.durationMillis ? status.durationMillis / 1000 : 0);
 
       newSound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded) {
           setIsPlaying(status.isPlaying);
+          setProgress(status.positionMillis / 1000);
+          if (status.didJustFinish) {
+            setIsPlaying(false);
+            setProgress(0);
+          }
         }
       });
-    } catch (error) {
-      console.log("Error loading audio:", error);
+    } catch (err) {
+      console.error("Error loading audio:", err);
     } finally {
       setLoading(false);
     }
@@ -78,30 +81,75 @@ export default function AudioScreen() {
   const togglePlayPause = async () => {
     if (!sound) return;
     const status = await sound.getStatusAsync();
-    if (status.isLoaded) {
-      if (status.isPlaying) {
-        await sound.pauseAsync();
-        setIsPlaying(false);
-      } else {
-        await sound.playAsync();
-        setIsPlaying(true);
-      }
+    if (!status.isLoaded) return;
+
+    if (status.isPlaying) {
+      await sound.pauseAsync();
+      setIsPlaying(false);
+    } else {
+      await sound.playAsync();
+      setIsPlaying(true);
     }
   };
 
+  const skipForward = async () => {
+    if (!sound) return;
+    const status = await sound.getStatusAsync();
+    if (!status.isLoaded) return;
+    await sound.setPositionAsync(
+      Math.min(status.positionMillis + 10000, status.durationMillis || 0)
+    );
+  };
+
+  const skipBackward = async () => {
+    if (!sound) return;
+    const status = await sound.getStatusAsync();
+    if (!status.isLoaded) return;
+    await sound.setPositionAsync(Math.max(status.positionMillis - 10000, 0));
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  };
+
   const renderItem = ({ item }: { item: (typeof audioTracks)[0] }) => {
-    const isCurrent = currentTrack === item.id;
+    const isCurrent = currentTrack?.id === item.id;
     return (
       <TouchableOpacity
-        style={[styles.trackItem, isCurrent && styles.activeTrack]}
+        style={[styles.trackCard, isCurrent && styles.activeTrack]}
         onPress={() => playAudio(item)}
       >
-        <Text style={styles.trackTitle}>{item.title}</Text>
+        <View style={styles.trackInfo}>
+          <Text style={styles.trackTitle}>{item.title}</Text>
+          {isCurrent && (
+            <>
+              <View style={styles.progressBarBackground}>
+                <View
+                  style={[
+                    styles.progressBarForeground,
+                    { flex: progress / (duration || 1) },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.progressBarRemaining,
+                    { flex: 1 - progress / (duration || 1) },
+                  ]}
+                />
+              </View>
+              <Text style={styles.trackTime}>
+                {formatTime(progress)} / {formatTime(duration)}
+              </Text>
+            </>
+          )}
+        </View>
         {isCurrent && (
           <Ionicons
             name={isPlaying ? "pause-circle" : "play-circle"}
             size={28}
-            color="#4A90E2"
+            color={theme.colors.primaryAccent}
           />
         )}
       </TouchableOpacity>
@@ -109,73 +157,155 @@ export default function AudioScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.header}>Audio Library</Text>
-      {loading && <ActivityIndicator size="large" color="#4A90E2" />}
+
+      {loading && (
+        <ActivityIndicator size="large" color={theme.colors.primaryAccent} />
+      )}
+
       <FlatList
         data={audioTracks}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
       />
-      {sound && (
-        <TouchableOpacity
-          style={styles.floatingButton}
-          onPress={togglePlayPause}
-        >
-          <Ionicons
-            name={isPlaying ? "pause" : "play"}
-            size={28}
-            color="#fff"
-          />
-        </TouchableOpacity>
+
+      {currentTrack && (
+        <View style={styles.miniPlayer}>
+          <Text style={styles.miniTrackTitle}>{currentTrack.title}</Text>
+          <View style={styles.miniControls}>
+            <TouchableOpacity onPress={skipBackward}>
+              <Ionicons
+                name="play-back"
+                size={32}
+                color={theme.colors.primaryAccent}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={togglePlayPause}
+              style={{ marginHorizontal: 20 }}
+            >
+              <Ionicons
+                name={isPlaying ? "pause-circle" : "play-circle"}
+                size={44}
+                color={theme.colors.primaryAccent}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={skipForward}>
+              <Ionicons
+                name="play-forward"
+                size={32}
+                color={theme.colors.primaryAccent}
+              />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.progressBarBackground}>
+            <View
+              style={[
+                styles.progressBarForeground,
+                { flex: progress / (duration || 1) },
+              ]}
+            />
+            <View
+              style={[
+                styles.progressBarRemaining,
+                { flex: 1 - progress / (duration || 1) },
+              ]}
+            />
+          </View>
+          <Text style={styles.trackTime}>
+            {formatTime(progress)} / {formatTime(duration)}
+          </Text>
+        </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#FAEBD7",
+    backgroundColor: theme.colors.primaryBackground,
     padding: 20,
   },
   header: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
+    color: theme.colors.primaryText,
     marginBottom: 20,
     textAlign: "center",
-    color: "#4A4A4A",
   },
-  trackItem: {
+  trackCard: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#E6E6FA",
+    backgroundColor: theme.colors.secondaryBackground,
     padding: 15,
-    borderRadius: 10,
+    borderRadius: 12,
     marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
   },
   activeTrack: {
-    backgroundColor: "#D0E8F2",
+    backgroundColor: theme.colors.primaryAccent + "20",
+  },
+  trackInfo: {
+    flex: 1,
+    marginRight: 10,
   },
   trackTitle: {
     fontSize: 16,
-    color: "#4A4A4A",
+    fontWeight: "bold",
+    color: theme.colors.primaryText,
   },
-  floatingButton: {
+  progressBarBackground: {
+    flexDirection: "row",
+    height: 4,
+    backgroundColor: "#ccc",
+    borderRadius: 2,
+    overflow: "hidden",
+    marginTop: 6,
+  },
+  progressBarForeground: {
+    backgroundColor: theme.colors.primaryAccent,
+  },
+  progressBarRemaining: {
+    backgroundColor: "#eee",
+  },
+  trackTime: {
+    fontSize: 12,
+    color: theme.colors.secondaryText,
+    marginTop: 2,
+    textAlign: "right",
+  },
+  miniPlayer: {
     position: "absolute",
-    bottom: 30,
-    right: 30,
-    backgroundColor: "#4A90E2",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: theme.colors.secondaryBackground,
+    padding: 12,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
+  },
+  miniTrackTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: theme.colors.primaryText,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  miniControls: {
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 3 },
+    marginBottom: 8,
   },
 });

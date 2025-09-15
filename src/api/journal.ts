@@ -27,3 +27,6 @@ export async function createJournalEntry(
   if (error) throw error;
   return data as Journal;
 }
+
+
+

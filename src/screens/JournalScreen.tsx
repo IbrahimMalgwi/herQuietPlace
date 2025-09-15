@@ -1,100 +1,115 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, Button, FlatList, Alert } from "react-native";
-import { createJournalEntry, fetchUserJournals } from "../api/journal";
-import { useAuth } from "../hooks/useAuth";
+import {
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
+import { supabase } from "../lib/supabaseClient";
 import { Journal } from "../types/journal";
 
 export default function JournalScreen() {
-  const { user } = useAuth();
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [entries, setEntries] = useState<Journal[]>([]);
+  const [journals, setJournals] = useState<Journal[]>([]);
+  const [newEntry, setNewEntry] = useState("");
 
-  // Load user's journal entries
-  const loadJournals = async () => {
-    if (!user) return;
-    try {
-      const data = await fetchUserJournals(user.id);
-      setEntries(data);
-    } catch (err: any) {
-      console.error("Failed to load journals:", err.message);
-    }
-  };
+  const fetchJournals = async () => {
+    const { data, error } = await supabase
+      .from("journals")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-  useEffect(() => {
-    loadJournals();
-  }, [user]);
-
-  // Add a new journal entry
-  const handleAddEntry = async () => {
-    if (!user || !title.trim() || !content.trim()) {
-      Alert.alert("Validation", "Please provide both a title and content.");
+    if (error) {
+      console.error("Error fetching journals:", error);
       return;
     }
 
-    try {
-      const newEntry = await createJournalEntry(user.id, title, content);
-      setEntries((prev) => [newEntry, ...prev]); // add to top
-      setTitle("");
-      setContent("");
-    } catch (err: any) {
-      console.error("Failed to create journal entry:", err.message);
-      Alert.alert("Error", err.message || "Could not create journal entry.");
-    }
+    setJournals(data || []);
   };
 
+  const addJournal = async () => {
+    if (!newEntry.trim()) return;
+
+    const { data, error } = await supabase
+      .from("journals")
+      .insert([{ title: newEntry }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error adding journal:", error);
+      return;
+    }
+
+    setJournals([data, ...journals]);
+    setNewEntry("");
+  };
+
+  useEffect(() => {
+    fetchJournals();
+  }, []);
+
   return (
-    <View style={{ padding: 20, flex: 1 }}>
-      <TextInput
-        placeholder="Journal title..."
-        value={title}
-        onChangeText={setTitle}
-        style={{
-          borderWidth: 1,
-          borderColor: "#ccc",
-          marginBottom: 10,
-          padding: 8,
-          borderRadius: 6,
-        }}
-      />
+    <View style={styles.container}>
+      <Text style={styles.title}>My Journal</Text>
 
-      <TextInput
-        placeholder="Write your journal..."
-        value={content}
-        onChangeText={setContent}
-        style={{
-          borderWidth: 1,
-          borderColor: "#ccc",
-          marginBottom: 10,
-          padding: 8,
-          borderRadius: 6,
-        }}
-        multiline
-      />
-
-      <Button title="Save Entry" onPress={handleAddEntry} />
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          placeholder="Write a new entry..."
+          value={newEntry}
+          onChangeText={setNewEntry}
+        />
+        <TouchableOpacity style={styles.addButton} onPress={addJournal}>
+          <Text style={styles.buttonText}>Add</Text>
+        </TouchableOpacity>
+      </View>
 
       <FlatList
-        data={entries}
+        data={journals}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View
-            style={{
-              paddingVertical: 8,
-              borderBottomWidth: 1,
-              borderBottomColor: "#eee",
-            }}
-          >
-            <Text style={{ fontWeight: "bold" }}>{item.title}</Text>
-            <Text>{item.content}</Text>
-            {item.created_at && (
-              <Text style={{ fontSize: 12, color: "#666" }}>
-                {new Date(item.created_at).toLocaleString()}
-              </Text>
-            )}
+          <View style={styles.entryCard}>
+            <Text style={styles.entryTitle}>{item.title}</Text>
+            {item.content ? (
+              <Text style={styles.entryContent}>{item.content}</Text>
+            ) : null}
+            <Text style={styles.date}>
+              {new Date(item.created_at).toLocaleDateString()}
+            </Text>
           </View>
         )}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, backgroundColor: "#FFF" },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 20 },
+  inputRow: { flexDirection: "row", marginBottom: 15 },
+  input: {
+    flex: 1,
+    borderColor: "#ccc",
+    borderWidth: 1,
+    padding: 10,
+    borderRadius: 8,
+  },
+  addButton: {
+    marginLeft: 10,
+    backgroundColor: "#A8C1B4",
+    padding: 12,
+    borderRadius: 8,
+    justifyContent: "center",
+  },
+  buttonText: { color: "#fff", fontWeight: "bold" },
+  entryCard: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  entryTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
+  entryContent: { fontSize: 14, color: "#555", marginTop: 5 },
+  date: { fontSize: 12, color: "#999", marginTop: 8 },
+});

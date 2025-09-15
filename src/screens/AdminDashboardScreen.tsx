@@ -1,135 +1,106 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, Button, FlatList, StyleSheet, Alert } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  Button,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { supabase } from "../lib/supabaseClient";
-import { colors } from "../theme/colors";
-import { useAuth } from "../contexts/AuthContext";
 
 export default function AdminDashboardScreen() {
-  const { role } = useAuth(); // ✅ from AuthContext
-  const [prayers, setPrayers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [audioFiles, setAudioFiles] = useState<string[]>([]);
 
-  // Only fetch if admin
-  const fetchPrayers = async () => {
-    if (role !== "admin") return;
-
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("prayers")
-      .select("*")
-      .eq("approved", false);
+  const fetchAudioFiles = async () => {
+    const { data, error } = await supabase.storage
+      .from("audio")
+      .list("uploads");
 
     if (error) {
-      console.error(error);
-      Alert.alert("Error", "Could not fetch pending prayers.");
-    } else {
-      setPrayers(data || []);
+      console.error("Error fetching audio files:", error);
+      return;
     }
 
-    setLoading(false);
+    setAudioFiles(data?.map((file) => file.name) || []);
+  };
+
+  const pickAudio = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "audio/*",
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled) {
+      console.log("User cancelled picker");
+      return;
+    }
+
+    const file = result.assets[0]; // ✅ safely access file
+    if (!file) {
+      console.error("No file selected");
+      return;
+    }
+
+    const { uri, name, mimeType } = file;
+
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    const { data, error } = await supabase.storage
+      .from("audio")
+      .upload(`uploads/${Date.now()}_${name}`, blob, {
+        contentType: mimeType || "audio/mpeg",
+      });
+
+    if (error) {
+      console.error("Upload error:", error);
+    } else {
+      console.log("Upload success:", data);
+      fetchAudioFiles(); // refresh list
+    }
   };
 
   useEffect(() => {
-    fetchPrayers();
-  }, [role]);
-
-  const approvePrayer = async (id: string) => {
-    const { error } = await supabase
-      .from("prayers")
-      .update({ approved: true })
-      .eq("id", id);
-
-    if (error) {
-      Alert.alert("Error", "Could not approve prayer.");
-    } else {
-      setPrayers((prev) => prev.filter((p) => p.id !== id));
-    }
-  };
-
-  if (role !== "admin") {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.header}>Access Denied</Text>
-        <Text style={styles.text}>
-          You do not have permission to view this page.
-        </Text>
-      </View>
-    );
-  }
+    fetchAudioFiles();
+  }, []);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Admin Dashboard</Text>
+      <Text style={styles.title}>Admin Dashboard</Text>
+      <TouchableOpacity style={styles.uploadButton} onPress={pickAudio}>
+        <Text style={styles.buttonText}>Upload Audio</Text>
+      </TouchableOpacity>
 
-      {/* ✅ Pending Prayers Section */}
-      <Text style={styles.sectionTitle}>Pending Prayers</Text>
-      {loading ? (
-        <Text>Loading...</Text>
-      ) : (
-        <FlatList
-          data={prayers}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <Text style={styles.text}>{item.content}</Text>
-              <Button title="Approve" onPress={() => approvePrayer(item.id)} />
-            </View>
-          )}
-        />
-      )}
-
-      {/* ✅ Daily Strength Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Add Daily Strength</Text>
-        <Button
-          title="Add New Message"
-          onPress={() => Alert.alert("TODO", "Add daily strength form")}
-        />
-      </View>
-
-      {/* ✅ Upload Audio Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Upload Audio</Text>
-        <Button
-          title="Upload File"
-          onPress={() => Alert.alert("TODO", "Pick and upload audio")}
-        />
-      </View>
+      <FlatList
+        data={audioFiles}
+        keyExtractor={(item) => item}
+        renderItem={({ item }) => (
+          <View style={styles.audioItem}>
+            <Text style={styles.audioText}>{item}</Text>
+          </View>
+        )}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.primaryBackground,
-    padding: 16,
+  container: { flex: 1, padding: 20, backgroundColor: "#FAEBD7" },
+  title: { fontSize: 22, fontWeight: "bold", marginBottom: 20 },
+  uploadButton: {
+    backgroundColor: "#A8C1B4",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20,
+    alignItems: "center",
   },
-  header: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: colors.primaryText,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "500",
-    marginTop: 16,
-    marginBottom: 8,
-    color: colors.primaryAccent,
-  },
-  section: {
-    marginVertical: 12,
-  },
-  card: {
-    backgroundColor: colors.secondaryBackground,
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  audioItem: {
     padding: 12,
-    borderRadius: 8,
-    marginVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
   },
-  text: {
-    fontSize: 16,
-    color: colors.primaryText,
-    marginBottom: 8,
-  },
+  audioText: { fontSize: 16, color: "#4A4A4A" },
 });
