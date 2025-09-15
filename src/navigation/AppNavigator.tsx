@@ -16,6 +16,7 @@ import { useAuth } from "../contexts/AuthContext";
 export type RootStackParamList = {
   Auth: undefined;
   User: undefined;
+  Profile: undefined;
   Admin: undefined;
   ResetPassword: { email?: string };
 };

@@ -1,103 +1,70 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, Button, FlatList, Alert } from "react-native";
-import { createPrayer, fetchPrayers, Prayer } from "../api/prayer";
-import { useAuth } from "../hooks/useAuth";
+import React, { useContext } from "react";
+import { View, StyleSheet, Alert } from "react-native";
+import { theme } from "../theme/theme";
+import { useAuth } from "../contexts/AuthContext";
+import { PrayerContext } from "../contexts/PrayerContext";
+import PrayerForm from "../components/PrayerForm";
+import PrayerList from "../components/PrayerList";
+import EmptyState from "../components/EmptyState";
+import AuthButtons from "../components/AuthButtons";
 
 export default function PrayerScreen() {
   const { user } = useAuth();
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [prayers, setPrayers] = useState<Prayer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { prayers, loading, addPrayer } = useContext(PrayerContext);
 
-  // Load prayers
-  const loadPrayers = async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const data = await fetchPrayers(false, user.id);
-      setPrayers(data);
-    } catch (err: any) {
-      Alert.alert("Error", err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadPrayers();
-  }, [user]);
-
-  const handleAddPrayer = async () => {
-    if (!user || !title.trim()) return;
-
-    try {
-      const newPrayer = await createPrayer(user.id, title, content);
-      setPrayers((prev) => [newPrayer, ...prev]);
-      setTitle("");
-      setContent("");
-      Alert.alert("Submitted", "Your prayer has been submitted!");
-    } catch (err: any) {
-      Alert.alert("Error", err.message);
-    }
+  const handleSubmit = async (title: string, content?: string) => {
+    if (!title.trim()) return;
+    await addPrayer(title, content);
+    Alert.alert("Submitted", "Your prayer has been submitted!");
   };
 
   if (!user) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text>You must be signed in to submit prayers.</Text>
+      <View style={styles.center}>
+        <EmptyState
+          title="Sign in required"
+          subtitle="You must be signed in to submit prayers."
+        />
+        <AuthButtons
+          onSignIn={() => console.log("Navigate to Auth")}
+          onSignUp={() => console.log("Navigate to Auth")}
+        />
       </View>
     );
   }
 
-  return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <TextInput
-        placeholder="Prayer title..."
-        value={title}
-        onChangeText={setTitle}
-        style={{
-          borderWidth: 1,
-          borderColor: "#ccc",
-          marginBottom: 10,
-          padding: 8,
-          borderRadius: 6,
-        }}
-      />
-      <TextInput
-        placeholder="Write your prayer..."
-        value={content}
-        onChangeText={setContent}
-        style={{
-          borderWidth: 1,
-          borderColor: "#ccc",
-          marginBottom: 10,
-          padding: 8,
-          borderRadius: 6,
-        }}
-      />
-      <Button title="Submit Prayer" onPress={handleAddPrayer} />
+  // Ensure approved and shared are booleans
+  const safePrayers = prayers.map((p) => ({
+    ...p,
+    approved: p.approved ?? false,
+    shared: p.shared ?? false,
+  }));
 
-      {loading ? (
-        <Text style={{ marginTop: 20, textAlign: "center" }}>
-          Loading prayers...
-        </Text>
+  return (
+    <View style={styles.container}>
+      <PrayerForm onSubmit={handleSubmit} />
+      {safePrayers.length ? (
+        <PrayerList prayers={safePrayers} loading={loading} />
       ) : (
-        <FlatList
-          style={{ marginTop: 20 }}
-          data={prayers}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 16 }}>{item.title}</Text>
-              {item.content ? <Text>{item.content}</Text> : null}
-              <Text style={{ fontSize: 12, color: "gray" }}>
-                {item.approved ? "✅ Approved" : "⏳ Pending approval"}
-              </Text>
-            </View>
-          )}
+        <EmptyState
+          title="No prayers yet"
+          subtitle="Create your first prayer"
         />
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.primaryBackground,
+    padding: 20,
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+});
